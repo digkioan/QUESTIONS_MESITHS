@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Trainer Εξέτασης — Μεσίτης Ασφαλίσεων</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  :root { --bg:#0b1220; --card:#121a2b; --text:#e8eefc; --muted:#a9b3c7; --brand:#6ea8fe; --good:#3ddc97; --bad:#ff6b6b; --shadow:0 10px 25px rgba(0,0,0,.35); --radius:16px; }
+  *{box-sizing:border-box} body{margin:0;background:linear-gradient(180deg,#0b1220,#0e172a 60%);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;line-height:1.55;padding:24px}
+  .container{max-width:1100px;margin:0 auto} header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .title{font-size:clamp(20px,2.8vw,34px);font-weight:800;letter-spacing:.2px} .subtitle{color:var(--muted);font-size:14px}
+  .card{background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,.01));border:1px solid rgba(255,255,255,.08);box-shadow:var(--shadow);border-radius:var(--radius);padding:20px}
+  .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  button,select,input[type="file"],input[type="number"]{background:var(--card);color:var(--text);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px 14px;cursor:pointer;transition:transform .05s}
+  input[type="file"],input[type="number"]{padding:8px}
+  button:hover{transform:translateY(-1px)} .primary{background:linear-gradient(180deg,#1c2a4d,#14223f);border-color:#2b3a60}
+  .good{background:linear-gradient(180deg,#123b2b,#0e2f22);border-color:#1f6a4f} .warn{background:linear-gradient(180deg,#452018,#34150f);border-color:#6b2a1c}
+  .metrics{display:flex;gap:16px;flex-wrap:wrap} .metric{background:var(--card);border:1px solid rgba(255,255,255,.10);padding:12px 16px;border-radius:12px}
+  .qtext{font-size:clamp(16px,2vw,21px);font-weight:700}
+  .options{display:grid;grid-template-columns:1fr;gap:10px;margin-top:14px}
+  .opt{background:var(--card);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:12px 14px;display:flex;gap:12px;align-items:flex-start}
+  .opt.correct{outline:2px solid var(--good)} .opt.incorrect{outline:2px solid var(--bad)}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .spacer{flex:1} .pill{font-size:12px;border:1px solid rgba(255,255,255,.15);padding:6px 8px;border-radius:999px;color:var(--muted)}
+  .hidden{display:none !important} .divider{height:1px;background:rgba(255,255,255,.08);margin:14px 0} a.link{color:var(--brand);text-decoration:none}
+  .labchip{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;border-radius:999px;border:1px solid rgba(255,255,255,.18);font-weight:700}
+  .opt-body{display:flex;gap:10px;align-items:flex-start} .opt-text{margin-top:2px}
+  .results{margin-top:18px} .result-item{border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:12px;margin:10px 0;background:#0b1220}
+  .tag{display:inline-block;font-size:12px;padding:4px 8px;border-radius:999px;border:1px solid rgba(255,255,255,.15);margin-right:6px;color:var(--muted)}
+  .timer{font-weight:700} .statline{margin-top:8px;color:var(--muted);font-size:13px}
+  dialog { border:1px solid rgba(255,255,255,.15); border-radius:12px; background:#0e172a; color:var(--text); max-width:900px; width:clamp(320px,80vw,900px); }
+  .search { width:100%; padding:10px; border-radius:10px; border:1px solid rgba(255,255,255,.15); background:#0b1220; color:var(--text); }
+  .list { max-height:60vh; overflow:auto; margin-top:10px; }
+  .li { padding:10px 8px; border-bottom:1px solid rgba(255,255,255,.08); cursor:pointer; }
+  .li:hover { background:#101a2f; }
+</style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <div class="title">Trainer Εξέτασης — Μεσίτης Ασφαλίσεων</div>
+        <div class="subtitle">JSON / CSV / XLSX · Μελέτη, Προσομοίωση 60, &amp; Επανάληψη λαθών (adaptive)</div>
+      </div>
+      <div class="controls">
+        <select id="mode">
+          <option value="study">Μελέτη (σειρά δεδομένων)</option>
+          <option value="practice">Προσομοίωση (60 τυχαίες)</option>
+          <option value="mistakes">Επανάληψη λαθών</option>
+        </select>
+        <input id="goto" type="number" min="1" placeholder="# ερώτησης" style="width:120px">
+        <label class="pill"><input type="checkbox" id="shuffleAnswers" checked> Τυχαία σειρά απαντήσεων</label>
+        <input id="file" type="file" accept=".json,.csv,.xlsx,.xls" />
+        <button id="pasteJson">Επικόλληση JSON</button>
+        <button id="jumpBtn">Μετάβαση…</button>
+        <button id="reset" class="warn">Μηδένισε πρόοδο</button>
+      </div>
+    </header>
+
+    <div class="divider"></div>
+
+    <div class="metrics">
+      <div class="metric"><b>Εμφανίσεις απαντήσεων</b><div><span id="answerViews">0</span> φορές</div></div>
+      <div class="metric" id="metricQuestion"><b>Ερώτηση</b><div><span id="pos">0</span> / <span id="total">0</span></div></div>
+      <div class="metric"><b>Χρόνος</b><div class="timer" id="timer">—:—</div></div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="card qarea" id="quizCard">
+      <div class="row">
+        <div class="pill" id="qid">—</div>
+        <div class="spacer"></div>
+        <button id="prev">Προηγούμενη</button>
+        <button id="next" class="primary">Επόμενη</button>
+      </div>
+
+      <div style="height:8px"></div>
+      <div class="qtext" id="qtext">Φόρτωσε πρώτα ερωτήσεις…</div>
+
+      <div class="options" id="options"></div>
+
+      <div class="row" style="margin-top:12px;">
+        <button id="showAnswer" class="good">Δείξε απάντηση</button>
+        <button id="submit" class="primary">Καταχώριση επιλογής</button>
+        <div class="spacer"></div>
+        <div class="pill" id="modeLabel">Λειτουργία: —</div>
+      </div>
+
+      <div id="statLine" class="statline"></div>
+      <div class="footer" id="feedback"></div>
+
+      <div class="row" id="practiceControls" style="margin-top:12px;">
+        <button id="startPractice" class="primary">Ξεκίνα Προσομοίωση 60 ερωτήσεων</button>
+        <span class="pill">Σετ εξέτασης: <span id="practiceCount">—</span> / 60</span>
+      </div>
+    </div>
+
+    <div id="results" class="results hidden">
+      <div class="card">
+        <h3>Αποτελέσματα Προσομοίωσης</h3>
+        <p><span class="tag">Σωστά: <b id="resCorrect">0</b> / 60</span> <span class="tag">Ποσοστό: <b id="resPct">0%</b></span> <span class="tag">Χρόνος: <b id="resTime">—:—</b></span></p>
+        <div id="mistakesWrap">
+          <h4>Λάθος απαντήσεις</h4>
+          <div id="mistakes"></div>
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <button id="retryPractice" class="primary">Νέα Προσομοίωση</button>
+          <div class="spacer"></div>
+          <button id="backToStudy">Επιστροφή στη Μελέτη</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer" style="margin-top:18px;">
+      LocalStorage | <a class="link" href="#" id="export">Εξαγωγή προόδου</a> · <a class="link" href="#" id="import">Εισαγωγή</a> · <a class="link" href="#" id="sample">Δείγμα JSON</a>
+    </div>
+  </div>
+
+  <!-- Paste JSON -->
+  <dialog id="jsonDlg">
+    <h3>Επικόλληση JSON ερωτήσεων</h3>
+    <textarea id="jsonTxt" class="search" style="height:260px" placeholder='[{"id":1,"question":"...","correct":"α","options":[{"label":"α","text":"..."}]}]'></textarea>
+    <div class="row" style="margin-top:10px;">
+      <button id="jsonLoad" class="good">Φόρτωσε</button><div class="spacer"></div><button id="jsonClose">Κλείσιμο</button>
+    </div>
+  </dialog>
+
+  <!-- Jump Navigator -->
+  <dialog id="jumpDlg">
+    <h3>Μετάβαση σε ερώτηση</h3>
+    <input id="jumpSearch" class="search" placeholder="Αναζήτηση στο κείμενο ερώτησης…" />
+    <div id="jumpList" class="list"></div>
+    <div class="row" style="margin-top:10px;"><div class="spacer"></div><button id="jumpClose">Κλείσιμο</button></div>
+  </dialog>
+
+<script>
+(() => {
+  // ---------- state ----------
+  let DATA=[], order=[], idx=0, mode='study', shuffleAnswers=true;
+  const PRACTICE_SIZE=60;
+  let practiceActive=false, practiceSet=[], practiceAnswers=[], practiceStart=0, practiceEnd=0, timerInt=null;
+
+  const stateKey='mesitis_progress_v2'; // seen, answer_views, attempts, corrects, wrongs
+  const progress=JSON.parse(localStorage.getItem(stateKey)||'{}');
+
+  // ---------- helpers ----------
+  const $ = id => document.getElementById(id);
+  const els = {
+    mode: $('mode'), qid: $('qid'), pos: $('pos'), total: $('total'), qtext: $('qtext'), options: $('options'), feedback: $('feedback'),
+    modeLabel: $('modeLabel'), answerViews: $('answerViews'), file: $('file'), pasteJson: $('pasteJson'), jumpBtn: $('jumpBtn'),
+    reset: $('reset'), prev: $('prev'), next: $('next'), showAnswer: $('showAnswer'), submit: $('submit'), export: $('export'),
+    import: $('import'), sample: $('sample'), timer: $('timer'), metricQuestion: $('metricQuestion'), practiceControls: $('practiceControls'),
+    startPractice: $('startPractice'), practiceCount: $('practiceCount'), results: $('results'), resCorrect: $('resCorrect'),
+    resPct: $('resPct'), resTime: $('resTime'), mistakesWrap: $('mistakesWrap'), mistakes: $('mistakes'), retryPractice: $('retryPractice'),
+    backToStudy: $('backToStudy'), quizCard: $('quizCard'), goto: $('goto'), jsonDlg: $('jsonDlg'), jsonTxt: $('jsonTxt'),
+    jsonLoad: $('jsonLoad'), jsonClose: $('jsonClose'), jumpDlg: $('jumpDlg'), jumpSearch: $('jumpSearch'), jumpList: $('jumpList'),
+    statLine: $('statLine')
+  };
+
+  const save = () => localStorage.setItem(stateKey, JSON.stringify(progress));
+  const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]] } return a };
+  const fmtTime = ms => { const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60; return h > 0 ? `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${String(m).padStart(2, '0')}:${String(sec).padStart(2,'0')}`; };
+  const stripLeadingLabel = t => (t || '').replace(/^\s*[\(\[]?\s*[αβγδε]\s*[\)\].-]\s*/i, '').trim();
+  const ensureStats = qid => (progress[qid] ||= { seen: false, answer_views: 0, attempts: 0, corrects: 0, wrongs: 0 });
+
+  // οι δείκτες για κάθε mode (ώστε total να είναι πάντα σωστό)
+  function mistakeIndices() {
+    return DATA.map((q, i) => ({ i, st: progress[q.id] }))
+      .filter(x => x.st && (x.st.wrongs || 0) > (x.st.corrects || 0))
+      .map(x => x.i);
+  }
+  function activeList() {
+    if (practiceActive) return { indices: practiceSet.slice(), total: PRACTICE_SIZE };
+    if (mode === 'mistakes') { const inds = mistakeIndices(); return { indices: inds, total: inds.length }; }
+    // study
+    return { indices: order.slice(), total: DATA.length };
+  }
+
+  // Επιστρέφει το τρέχον αντικείμενο ερώτησης με βάση το mode
+  function current() {
+    const { indices } = activeList();
+    const realIndex = indices[idx] ?? idx;
+    return DATA[realIndex];
+  }
+
+  // ---------- UI metrics ----------
+  function computeAnswerViews() {
+    els.answerViews.textContent = Object.values(progress).reduce((a, p) => a + (p.answer_views || 0), 0);
+  }
+  function startTimer() { if (timerInt) clearInterval(timerInt); timerInt = setInterval(() => { const now = Date.now(); els.timer.textContent = fmtTime((practiceActive ? now : (practiceEnd || now)) - practiceStart) }, 250); }
+  function stopTimer() { if (timerInt) { clearInterval(timerInt); timerInt = null; } }
+
+  // ---------- render ----------
+  function render() {
+    els.results.classList.add('hidden'); els.quizCard.classList.remove('hidden');
+
+    // κρύψε στοιχεία στην ενεργή προσομοίωση
+    els.qid.classList.toggle('hidden', practiceActive);
+    els.metricQuestion.classList.toggle('hidden', practiceActive);
+    els.jumpBtn.classList.toggle('hidden', practiceActive);
+    els.goto.classList.toggle('hidden', practiceActive);
+
+    if (!DATA.length) {
+      els.qid.textContent = '—'; els.pos.textContent = '0'; els.qtext.textContent = 'Φόρτωσε πρώτα ερωτήσεις…';
+      els.options.innerHTML = ''; els.modeLabel.textContent = 'Λειτουργία: —';
+      els.practiceControls.classList.toggle('hidden', mode !== 'practice'); els.practiceCount.textContent = '—'; els.timer.textContent = '—:—';
+      els.total.textContent = '0'; els.statLine.textContent = '';
+      computeAnswerViews(); return;
+    }
+
+    const { indices, total } = activeList();
+    if (idx >= total) idx = Math.max(0, total - 1);
+
+    // ειδικό μήνυμα όταν δεν υπάρχουν “λάθη” για επανάληψη
+    if (mode === 'mistakes' && total === 0) {
+      els.qid.textContent = '—'; els.pos.textContent = '0'; els.total.textContent = '0';
+      els.qtext.textContent = 'Δεν έχεις ερωτήσεις για επανάληψη (Λάθη > Σωστά). Μπες Μελέτη ή κάνε Προσομοίωση.';
+      els.options.innerHTML = ''; els.statLine.textContent = ''; els.feedback.textContent = '';
+      computeAnswerViews(); return;
+    }
+
+    const realIndex = indices[idx] ?? idx;
+    const q = DATA[realIndex];
+
+    els.qid.textContent = '#' + q.id; els.pos.textContent = (idx + 1); els.total.textContent = total;
+    els.qtext.textContent = q.question; els.feedback.textContent = '';
+
+    // render options (χωρίς γράμματα στην προσομοίωση)
+    let opts = q.options.slice();
+    if (shuffleAnswers && mode === 'practice') opts = shuffle(opts);
+    els.options.innerHTML = '';
+    opts.forEach(op => {
+      const row = document.createElement('label'); row.className = 'opt'; row.dataset.label = op.label;
+      const radio = document.createElement('input'); radio.type = 'radio'; radio.name = 'opt'; radio.value = op.label;
+      const body = document.createElement('div'); body.className = 'opt-body';
+      if (mode === 'study') { const chip = document.createElement('span'); chip.className = 'labchip'; chip.textContent = op.label; body.appendChild(chip); }
+      const t = document.createElement('div'); t.className = 'opt-text'; t.textContent = stripLeadingLabel(op.text);
+      body.appendChild(t); row.appendChild(radio); row.appendChild(body); els.options.appendChild(row);
+    });
+
+    // progress + statline
+    const st = ensureStats(q.id); st.seen = true; save();
+    els.statLine.textContent = `Σωστές απαντήσεις: ${st.corrects} · Λάθη: ${st.wrongs}`;
+
+    // UI toggles
+    const inPractice = (mode === 'practice');
+    els.practiceControls.classList.toggle('hidden', !inPractice || practiceActive);
+    els.showAnswer.disabled = inPractice && practiceActive;
+    els.showAnswer.style.opacity = (inPractice && practiceActive) ? .4 : 1;
+    els.modeLabel.textContent = 'Λειτουργία: ' + (mode === 'study' ? 'Μελέτη' : mode === 'mistakes' ? 'Επανάληψη λαθών' : 'Προσομοίωση');
+
+    computeAnswerViews();
+    if (practiceActive) startTimer(); else { stopTimer(); els.timer.textContent = '—:—'; }
+  }
+
+  // ---------- actions ----------
+  function showAnswer() {
+    if (!DATA.length) return;
+    if (mode === 'practice' && practiceActive) return;
+    const q = current();
+    Array.from(els.options.querySelectorAll('.opt')).forEach(r => {
+      const lab = r.dataset.label; if (lab === q.correct) r.classList.add('correct'); else r.classList.add('incorrect');
+    });
+    if (mode === 'study') { const st = ensureStats(q.id); st.answer_views++; save(); els.feedback.textContent = 'Σωστή απάντηση: ' + q.correct; computeAnswerViews(); }
+  }
+
+  function submitChoice() {
+    if (!DATA.length) return;
+    const q = current();
+    const sel = document.querySelector('input[name="opt"]:checked');
+    if (!sel) { els.feedback.textContent = 'Επίλεξε μια απάντηση.'; return; }
+    const choice = sel.value;
+    Array.from(els.options.querySelectorAll('.opt')).forEach(r => {
+      const lab = r.dataset.label; if (lab === q.correct) r.classList.add('correct'); if (lab === choice && lab !== q.correct) r.classList.add('incorrect');
+    });
+    const isCorrect = (choice === q.correct);
+    const st = ensureStats(q.id); st.attempts++; isCorrect ? st.corrects++ : st.wrongs++; save();
+    els.statLine.textContent = `Σωστές απαντήσεις: ${st.corrects} · Λάθη: ${st.wrongs}`;
+
+    if (mode === 'practice') {
+      const pickText = stripLeadingLabel((q.options.find(o => o.label === choice) || {}).text || '');
+      const correctText = stripLeadingLabel((q.options.find(o => o.label === q.correct) || {}).text || '');
+      practiceAnswers[idx] = { qid: q.id, chosenText: pickText, correctText, isCorrect, question: q.question };
+      if (idx < PRACTICE_SIZE - 1) { idx++; render(); } else { practiceEnd = Date.now(); stopTimer(); showResults(); }
+    } else {
+      els.feedback.textContent = isCorrect ? 'Σωστό!' : ('Λάθος. Η σωστή είναι: ' + q.correct);
+    }
+  }
+
+  function setMode(m) {
+    mode = m; idx = 0; practiceActive = false;
+    makeOrder(); render();
+  }
+
+  function startPractice() {
+    if (DATA.length < PRACTICE_SIZE) { alert('Χρειάζονται τουλάχιστον 60 ερωτήσεις.'); return; }
+    practiceSet = shuffle(Array.from({ length: DATA.length }, (_, i) => i)).slice(0, PRACTICE_SIZE);
+    practiceAnswers = Array.from({ length: PRACTICE_SIZE }, () => null);
+    practiceStart = Date.now(); practiceEnd = 0; practiceActive = true; idx = 0; render();
+  }
+
+  function showResults() {
+    const correct = practiceAnswers.filter(a => a && a.isCorrect).length;
+    els.resCorrect.textContent = correct; els.resPct.textContent = Math.round(correct * 100 / PRACTICE_SIZE) + '%';
+    els.resTime.textContent = fmtTime(practiceEnd - practiceStart);
+
+    const mistakes = practiceAnswers.filter(a => a && !a.isCorrect);
+    els.mistakes.innerHTML = '';
+    if (!mistakes.length) { els.mistakesWrap.classList.remove('hidden'); els.mistakes.innerHTML = '<div class="result-item">Καμία λάθος απάντηση. 🎉</div>'; }
+    else {
+      els.mistakesWrap.classList.remove('hidden');
+      for (const m of mistakes) {
+        const div = document.createElement('div'); div.className = 'result-item';
+        div.innerHTML = `<div><b>Ερώτηση:</b> ${m.question}</div><div style="margin-top:6px;"><b>Σωστή απάντηση:</b> ${m.correctText}</div><div style="margin-top:4px;color:#ffb4b4;"><b>Η επιλογή σου:</b> ${m.chosenText || '—'}</div>`;
+        els.mistakes.appendChild(div);
+      }
+    }
+    computeAnswerViews(); els.quizCard.classList.add('hidden'); els.results.classList.remove('hidden');
+  }
+
+  // ---------- loaders ----------
+  function makeOrder() { order = Array.from({ length: DATA.length }, (_, i) => i); }
+  function loadFromJSON(jsonArr) {
+    if (!Array.isArray(jsonArr)) { alert('Το JSON πρέπει να είναι array'); return; }
+    DATA = jsonArr.map(q => ({ id: q.id, question: q.question, correct: (q.correct || '').toString().trim(), options: (q.options || []).map(o => ({ label: o.label.toString().trim(), text: (o.text || '').toString() })) }));
+    makeOrder(); setMode(els.mode.value || 'study');
+  }
+  function parseCSV(text) {
+    const delim = text.includes(';') && !text.includes(',') ? ';' : ',';
+    const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+    const headers = lines[0].split(delim).map(h => h.trim());
+    const idxId = headers.findIndex(h => h.toLowerCase() === 'id'), idxQ = headers.findIndex(h => h.toLowerCase().startsWith('question')), idxC = headers.findIndex(h => h.toLowerCase().startsWith('correct'));
+    const optIdx = { 'α': headers.findIndex(h => h === 'α' || h.toLowerCase() === 'a'), 'β': headers.findIndex(h => h === 'β' || h.toLowerCase() === 'b'), 'γ': headers.findIndex(h => h === 'γ' || h.toLowerCase() === 'g'), 'δ': headers.findIndex(h => h === 'δ' || h.toLowerCase() === 'd'), 'ε': headers.findIndex(h => h === 'ε' || h.toLowerCase() === 'e') };
+    if (idxId < 0 || idxQ < 0 || idxC < 0) { alert('Λείπουν στήλες: id, question, correct'); return []; }
+    const arr = []; for (let i = 1; i < lines.length; i++) { const cols = lines[i].split(delim);
+      const id = parseInt(cols[idxId]); const question = (cols[idxQ] || '').trim(); const correct = (cols[idxC] || '').trim();
+      const options = []; for (const lab of ['α', 'β', 'γ', 'δ', 'ε']) { const k = optIdx[lab]; if (k >= 0 && (cols[k] || '').trim()) options.push({ label: lab, text: (cols[k] || '').trim() }); }
+      if (!id || !question || !correct || !options.length) continue; arr.push({ id, question, correct, options }); }
+    return arr;
+  }
+  function parseMESITIS_XLSX(sheet) {
+    const range = XLSX.utils.decode_range(sheet['!ref']); const get = (r, c) => (sheet[XLSX.utils.encode_cell({ r, c })] || {}).v;
+    const rows = []; for (let r = range.s.r; r <= range.e.r; r++) { rows.push([get(r, 0), get(r, 1), get(r, 2), get(r, 3)]); }
+    const out = []; let i = 0;
+    while (i < rows.length) {
+      const [num, corr, , textQ] = rows[i];
+      if (num != null && textQ) {
+        const qid = parseInt(num), correct = (corr || '').toString().trim(), qtext = (textQ || '').toString().trim();
+        const options = []; let j = i + 1;
+        while (j < rows.length && (rows[j][0] == null || rows[j][0] === '')) {
+          const lab = rows[j][2], optText = rows[j][3];
+          if (lab && optText) options.push({ label: lab.toString().trim(), text: optText.toString().trim() });
+          if (options.length >= 5) break; j++;
+        }
+        out.push({ id: qid, question: qtext, correct, options }); i = j;
+      } else { i++; }
+    }
+    return out;
+  }
+  async function handleFile(file) {
+    const name = file.name.toLowerCase();
+    if (name.endsWith('.json')) { const txt = await file.text(); loadFromJSON(JSON.parse(txt)); }
+    else if (name.endsWith('.csv')) { const txt = await file.text(); loadFromJSON(parseCSV(txt)); }
+    else if (name.endsWith('.xlsx') || name.endsWith('.xls')) { const buf = await file.arrayBuffer(); const wb = XLSX.read(buf, { type: 'array' }); const sheet = wb.Sheets[wb.SheetNames[0]]; loadFromJSON(parseMESITIS_XLSX(sheet)); }
+    else alert('Μη υποστηριζόμενο αρχείο. Χρησιμοποίησε JSON, CSV ή XLSX.');
+  }
+
+  // ---------- jump ----------
+  function openJump() { if (practiceActive) return; els.jumpSearch.value = ''; rebuildList(); els.jumpDlg.showModal(); }
+  function rebuildList() {
+    const qFilter = els.jumpSearch.value.trim().toLowerCase();
+    const { indices } = activeList();
+    els.jumpList.innerHTML = '';
+    indices.forEach((ix, pos) => {
+      const q = DATA[ix]; if (!q) return; const text = q.question;
+      if (qFilter && !text.toLowerCase().includes(qFilter)) return;
+      const item = document.createElement('div'); item.className = 'li';
+      item.textContent = (pos + 1) + '. ' + (text.length > 140 ? text.slice(0, 140) + '…' : text);
+      item.addEventListener('click', () => { idx = pos; els.jumpDlg.close(); render(); });
+      els.jumpList.appendChild(item);
+    });
+  }
+
+  // ---------- events ----------
+  $('shuffleAnswers').addEventListener('change', e => { shuffleAnswers = e.target.checked; render(); });
+  els.mode.addEventListener('change', e => { setMode(e.target.value); });
+  els.prev.addEventListener('click', () => { const { total } = activeList(); if (idx > 0) { idx--; render(); } else if (total) { idx = 0; render(); } });
+  els.next.addEventListener('click', () => { const { total } = activeList(); if (idx < total - 1) { idx++; render(); } });
+  els.showAnswer.addEventListener('click', showAnswer);
+  els.submit.addEventListener('click', submitChoice);
+  document.addEventListener('keydown', ev => { if (ev.key === 'Enter') submitChoice(); });
+  els.reset.addEventListener('click', () => { if (confirm('Σίγουρα θέλεις να μηδενίσεις την πρόοδο;')) { for (const k of Object.keys(progress)) delete progress[k]; save(); computeAnswerViews(); render(); } });
+  els.export.addEventListener('click', e => { e.preventDefault(); const blob = new Blob([JSON.stringify(progress, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'mesitis_progress.json'; a.click(); URL.revokeObjectURL(a.href); });
+  els.import.addEventListener('click', e => { e.preventDefault(); const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'application/json';
+    inp.onchange = async () => { const f = inp.files[0]; if (!f) return; try { const txt = await f.text(); const data = JSON.parse(txt); localStorage.setItem(stateKey, JSON.stringify(data));
+      for (const k of Object.keys(progress)) delete progress[k]; Object.assign(progress, data); computeAnswerViews(); render(); alert('Η πρόοδος εισήχθη.'); } catch { alert('Μη έγκυρο JSON.'); } }; inp.click(); });
+  $('file').addEventListener('change', () => { const f = $('file').files[0]; if (f) handleFile(f); });
+  els.pasteJson.addEventListener('click', () => { els.jsonTxt.value = ''; els.jsonDlg.showModal(); });
+  els.jsonClose.addEventListener('click', () => els.jsonDlg.close());
+  els.jsonLoad.addEventListener('click', () => { try { const arr = JSON.parse(els.jsonTxt.value); loadFromJSON(arr); els.jsonDlg.close(); } catch (e) { alert('Το JSON δεν είναι έγκυρο.'); } });
+  els.startPractice.addEventListener('click', startPractice);
+  els.retryPractice.addEventListener('click', () => { setMode('practice'); startPractice(); });
+  els.backToStudy.addEventListener('click', () => setMode('study'));
+  els.sample.addEventListener('click', e => { e.preventDefault(); const sample = [{ "id": 1, "question": "Η ιδιωτική ασφάλιση λειτουργεί συμπληρωματικά προς την κοινωνική ασφάλιση. Τι σημαίνει;", "correct": "δ", "options": [{ "label": "α", "text": "Καλύπτουν εντελώς διαφορετικούς κινδύνους." }, { "label": "β", "text": "Η κοινωνική στηρίζεται στην ιδιωτική." }, { "label": "γ", "text": "Η ιδιωτική καλύπτει όλο το φάσμα κινδύνων μόνη της." }, { "label": "δ", "text": "Η ιδιωτική συμπληρώνει την κοινωνική με προϊόντα υγείας/σύνταξης/ατυχημάτων." }] }, { "id": 2, "question": "Ο λήπτης της ασφάλισης αποκαλείται… και ασφαλισμένος είναι το πρόσωπο που…", "correct": "γ", "options": [{ "label": "α", "text": "(1) ασφαλισμένος, (2) συνάπτει την ασφάλιση." }, { "label": "β", "text": "(1) δικαιούχος, (2) πληρώνει τα ασφάλιστρα." }, { "label": "γ", "text": "(1) αντισυμβαλλόμενος, (2) πλήττεται από τον κίνδυνο." }, { "label": "δ", "text": "(1) ασφαλιστής, (2) αποκτά κληρονομικό δικαίωμα." }] }, { "id": 3, "question": "Τι είναι ο ασφαλιστικός κίνδυνος;", "correct": "β", "options": [{ "label": "α", "text": "Βέβαιο γεγονός με συγκεκριμένο χρόνο." }, { "label": "β", "text": "Αβέβαιο γεγονός με πιθανότητα επέλευσης που προκαλεί ζημία." }, { "label": "γ", "text": "Γεγονός που προκαλεί πάντα κέρδος." }, { "label": "δ", "text": "Απλή εικασία χωρίς οικονομικές συνέπειες." }] }]; loadFromJSON(sample); });
+  els.jumpBtn.addEventListener('click', openJump);
+  els.jumpClose.addEventListener('click', () => els.jumpDlg.close());
+  els.jumpSearch.addEventListener('input', rebuildList);
+  els.goto.addEventListener('change', e => {
+    if (practiceActive) return;
+    const n = parseInt(e.target.value || ''); if (!n) return;
+    const { total } = activeList();
+    idx = Math.min(Math.max(n - 1, 0), Math.max(0, total - 1));
+    render();
+  });
+
+  // first paint
+  (function init() { computeAnswerViews(); render(); })();
+})();
+</script>
+</body>
+</html>
